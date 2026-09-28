@@ -104,6 +104,11 @@ public partial class ChessGameManager : MonoBehaviour
 
         currentTurn = ChessPieceColor.White;
 
+        // Always face White as soon as the board is ready, even before
+        // StartGame() is called from a menu — so testing directly in the
+        // scene (Play button) also shows the correct starting orientation.
+        cameraController?.SnapViewForTurn(ChessPieceColor.White);
+
         if (gameStarted && aiEnabled && currentTurn == aiColor)
         {
             TriggerAIMove();
@@ -119,14 +124,28 @@ public partial class ChessGameManager : MonoBehaviour
         gameOver = false;
         gameStarted = true;
 
+        // Reset the board to the standard starting position for every new
+        // game. Without this, replaying (going back through the mode/color
+        // panels and starting again) would leave pieces exactly where the
+        // previous game ended, instead of a fresh board.
+        if (gameSetup != null)
+        {
+            gameSetup.SetupStandardPosition();
+            BuildStateFromScene();
+        }
+
         if (tileObjects != null) DeselectAll();
 
         OnTurnChanged?.Invoke(currentTurn);
 
-        // White always moves first, so the camera always starts facing White's
-        // side — in both AI mode and friend mode. Snap instantly (no animation)
-        // since this happens the moment the game begins.
-        cameraController?.SnapViewForTurn(ChessPieceColor.White);
+        // The camera should show whichever side the HUMAN is actually playing.
+        // - AI mode: the human plays whatever color the AI is NOT, and since
+        //   there's no per-turn rotation in AI mode, this is the one and only
+        //   view for the whole game — so it must be correct from the start.
+        // - Friend mode: always starts on White (White moves first, by the
+        //   rules), and the camera continues flipping every turn as normal.
+        ChessPieceColor humanFacingColor = aiEnabled ? Opposite(aiColor) : ChessPieceColor.White;
+        cameraController?.SnapViewForTurn(humanFacingColor);
 
         if (aiEnabled && currentTurn == aiColor)
         {
