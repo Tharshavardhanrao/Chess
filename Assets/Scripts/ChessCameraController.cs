@@ -4,58 +4,47 @@ using UnityEngine.EventSystems;
 
 public class ChessCameraController : MonoBehaviour
 {
-    [Header("Target")]
-    [Tooltip("Point the camera orbits around. Defaults to the board's transform if left empty.")]
     public Transform target;
 
-    [Header("Distance / Zoom")]
     public float distance = 8f;
     public float minDistance = 3f;
     public float maxDistance = 20f;
     public float mouseZoomSpeed = 1.2f;
     public float touchZoomSpeed = 0.015f;
 
-    [Header("Rotation")]
-    [Tooltip("Starting horizontal angle (degrees).")]
     public float yaw = 0f;
-    [Tooltip("Starting vertical angle (degrees). 90 = top-down, 0 = flat.")]
+
     public float pitch = 50f;
     public float minPitch = 15f;
     public float maxPitch = 85f;
     public float mouseRotateSpeed = 0.25f;
     public float touchRotateSpeed = 0.25f;
 
-    [Header("Smoothing")]
     public float positionSmoothTime = 0.08f;
 
-    [Header("Turn-Based Auto-Flip (Pass and Play)")]
-    [Tooltip("Automatically rotate the camera to face whichever player's turn it is.")]
     public bool autoFlipPerTurn = true;
-    [Tooltip("Camera yaw angle representing White's side of the board.")]
-    public float whiteViewYaw = 0f;
-    [Tooltip("Camera yaw angle representing Black's side of the board.")]
-    public float blackViewYaw = 180f;
-    [Tooltip("How long the smooth flip animation takes, in seconds.")]
+    public bool captureInitialTransformAsWhiteView = true;
+
+    public float whiteViewYaw = 180f;
+
+    public float blackViewYaw = 0f;
+
     public float flipDuration = 0.7f;
-    [Tooltip("Block manual drag/rotate input while the flip animation is playing.")]
+
     public bool blockInputDuringFlip = true;
 
     private Camera cam;
     private Vector3 velocity;
 
-    // Mouse drag tracking
     private bool mouseDragging = false;
     private Vector2 lastMousePos;
 
-    // Touch drag tracking
     private bool touchDragging = false;
     private Vector2 lastTouchPos;
 
-    // Pinch tracking
     private bool pinching = false;
     private float lastPinchDistance;
 
-    // Flip animation state
     private Coroutine flipCoroutine;
     private bool isFlipping = false;
 
@@ -67,6 +56,29 @@ public class ChessCameraController : MonoBehaviour
         {
             ChessBoardGenerator board = FindObjectOfType<ChessBoardGenerator>();
             if (board != null) target = board.transform;
+        }
+
+        if (target != null)
+        {
+            Vector3 offset = transform.position - target.position;
+            Vector3 localOffset = Quaternion.Inverse(target.rotation) * offset;
+
+            float measuredDistance = localOffset.magnitude;
+            if (measuredDistance > 0.001f)
+            {
+                distance = Mathf.Clamp(measuredDistance, minDistance, maxDistance);
+
+                float horizontalRadius = Mathf.Sqrt(localOffset.x * localOffset.x + localOffset.z * localOffset.z);
+                yaw = Mathf.Atan2(localOffset.x, localOffset.z) * Mathf.Rad2Deg;
+                pitch = Mathf.Atan2(localOffset.y, horizontalRadius) * Mathf.Rad2Deg;
+                pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+            }
+
+            if (captureInitialTransformAsWhiteView)
+            {
+                whiteViewYaw = yaw;
+                blackViewYaw = yaw + 180f;
+            }
         }
 
         ApplyImmediate();
@@ -88,9 +100,6 @@ public class ChessCameraController : MonoBehaviour
         transform.LookAt(target.position);
     }
 
-    // ------------------------------------------------------------------
-    // Public API — call this whenever the active turn changes.
-    // ------------------------------------------------------------------
     public void SetViewForTurn(ChessPieceColor color)
     {
         if (!autoFlipPerTurn) return;
@@ -101,7 +110,6 @@ public class ChessCameraController : MonoBehaviour
         flipCoroutine = StartCoroutine(SmoothFlip(targetYaw, flipDuration));
     }
 
-    // Snap instantly with no animation (e.g. when a new game starts).
     public void SnapViewForTurn(ChessPieceColor color)
     {
         if (!autoFlipPerTurn) return;
@@ -113,7 +121,7 @@ public class ChessCameraController : MonoBehaviour
         isFlipping = true;
 
         float startYaw = yaw;
-        float delta = Mathf.DeltaAngle(startYaw, targetYaw); // shortest signed path
+        float delta = Mathf.DeltaAngle(startYaw, targetYaw);
         float elapsed = 0f;
 
         if (duration <= 0f)
@@ -128,7 +136,7 @@ public class ChessCameraController : MonoBehaviour
         {
             elapsed += Time.deltaTime;
             float t = Mathf.Clamp01(elapsed / duration);
-            float smoothT = t * t * (3f - 2f * t); // smoothstep easing
+            float smoothT = t * t * (3f - 2f * t);
             yaw = startYaw + delta * smoothT;
             yield return null;
         }
@@ -242,7 +250,10 @@ public class ChessCameraController : MonoBehaviour
         float z = horizontalRadius * Mathf.Cos(yawRad);
         float y = distance * Mathf.Sin(pitchRad);
 
-        return target.position + new Vector3(x, y, z);
+        Vector3 localOffset = new Vector3(x, y, z);
+        Vector3 worldOffset = target.rotation * localOffset;
+
+        return target.position + worldOffset;
     }
 
     private void ApplyImmediate()
