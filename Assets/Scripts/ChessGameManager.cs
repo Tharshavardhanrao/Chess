@@ -11,10 +11,12 @@ public partial class ChessGameManager : MonoBehaviour
     public ChessGameSetup gameSetup;
     public Camera cam;
     public ChessCameraController cameraController;
+    public ChessPromotionPanel promotionPanel;
 
     public Color selectedColor = new Color(0.3f, 0.6f, 1f);
     public Color legalMoveColor = new Color(0.4f, 0.9f, 0.4f);
     public Color captureColor = new Color(0.95f, 0.3f, 0.3f);
+    [Tooltip("How strongly an enemy piece that can be captured is tinted with the capture color.")]
 
     public bool aiEnabled = false;
     public ChessPieceColor aiColor = ChessPieceColor.Black;
@@ -22,10 +24,51 @@ public partial class ChessGameManager : MonoBehaviour
     public int aiSearchDepth = 3;
     public float aiMoveDelay = 0.4f;
 
+    [Header("Sound")]
+    [Tooltip("Leave empty and one will be added automatically.")]
+    public AudioSource audioSource;
+    [Tooltip("Played whenever a piece moves to an empty square.")]
+    public AudioClip moveSound;
+    [Tooltip("Played whenever a move captures an enemy piece. Falls back to moveSound if left empty.")]
+    public AudioClip captureSound;
+    [Range(0f, 1f)] public float soundVolume = 1f;
+
+    [Header("Game Start / Background Music")]
+    [Tooltip("Leave empty and one will be added automatically.")]
+    public AudioSource musicSource;
+    [Tooltip("Played once, right when the game actually starts (after the menu panels close).")]
+    public AudioClip gameStartSound;
+    [Tooltip("Optional looping track that starts playing alongside gameStartSound.")]
+    public AudioClip backgroundMusic;
+    [Range(0f, 1f)] public float musicVolume = 0.5f;
+
     [Header("Move Animation")]
     public float moveAnimDuration = 0.28f;
     public float moveJumpHeight = 0.5f;
     private bool isAnimating = false;
+    private bool isAwaitingPromotion = false;
+
+    [Header("Captured Pieces")]
+    [Tooltip("Size of a captured piece relative to its size on the board.")]
+    public float capturedPieceScale = 0.6f;
+    [Tooltip("Distance between captured pieces, as a fraction of one square.")]
+    public float capturedSpacing = 0.6f;
+    [Tooltip("Columns of captured pieces beside the board (rows run along the board's length).")]
+    public int capturedColumns = 2;
+    [Tooltip("Gap between the board's border and the first captured piece, in squares.")]
+    public float capturedSideGap = 0.5f;
+    [Tooltip("Swap which side of the board each color's captured pieces go on.")]
+    public bool swapCapturedSides = false;
+    [Tooltip("Nudge the height captured pieces stand at (added to the detected table height). " +
+             "Raise it if they sink into the table, lower it if they float.")]
+    public float capturedHeightOffset = 0f;
+    public float capturedAnimDuration = 0.45f;
+    [Tooltip("How high a captured piece arcs while flying to its spot, in squares.")]
+    public float capturedArcHeight = 0.8f;
+
+    // Pieces each side has captured so far (used to pick the next free spot).
+    private int capturedByWhite = 0;
+    private int capturedByBlack = 0;
 
     public UnityEvent<ChessPieceColor> OnTurnChanged;
     public UnityEvent<string> OnGameOver;
@@ -59,12 +102,29 @@ public partial class ChessGameManager : MonoBehaviour
     public ChessPieceColor CurrentTurn => currentTurn;
     public bool IsGameOver => gameOver;
 
+    // Ends the game immediately as a resignation. The OTHER color wins.
+    public void Resign(ChessPieceColor resigningColor)
+    {
+        if (gameOver || !gameStarted) return;
+
+        gameOver = true;
+        StopAllCoroutines();
+        isAnimating = false;
+
+        string winner = Opposite(resigningColor) == ChessPieceColor.White ? "White" : "Black";
+        string message = $"{winner} wins — opponent resigned.";
+        OnGameOver?.Invoke(message);
+    }
+
     void Start()
     {
         if (board == null) board = GetComponent<ChessBoardGenerator>();
         if (pieceFactory == null) pieceFactory = GetComponent<ChessPieceFactory>();
         if (gameSetup == null) gameSetup = GetComponent<ChessGameSetup>();
         if (cam == null) cam = Camera.main;
+        if (audioSource == null) audioSource = GetComponent<AudioSource>();
+        if (audioSource == null) audioSource = gameObject.AddComponent<AudioSource>();
+        if (musicSource == null) musicSource = gameObject.AddComponent<AudioSource>();
 
         StartCoroutine(InitializeAfterSceneReady());
     }
@@ -97,10 +157,14 @@ public partial class ChessGameManager : MonoBehaviour
         ChessPieceInfo[] pieces = board.GetComponentsInChildren<ChessPieceInfo>();
         foreach (ChessPieceInfo piece in pieces)
         {
+            if (piece.row < 0 || piece.col < 0) continue; // captured piece sitting in a tray
             pieceObjects[piece.row, piece.col] = piece.gameObject;
             pieceType[piece.row, piece.col] = piece.type;
             pieceColor[piece.row, piece.col] = piece.color;
         }
+
+        capturedByWhite = 0;
+        capturedByBlack = 0;
 
         currentTurn = ChessPieceColor.White;
 
@@ -117,24 +181,37 @@ public partial class ChessGameManager : MonoBehaviour
 
     public void StartGame(bool vsAI, int depth, ChessPieceColor aiSide = ChessPieceColor.Black)
     {
+        // Cancel anything left over from a previous game (pending AI move,
+        // running move/capture animations) so it can't act on the new board.
+        StopAllCoroutines();
+        isAnimating = false;
+        isAwaitingPromotion = false;
+        if (promotionPanel != null) promotionPanel.Hide();
+
         aiEnabled = vsAI;
         aiSearchDepth = Mathf.Clamp(depth, 1, 4);
         aiColor = aiSide;
 
         gameOver = false;
-        gameStarted = true;
+        gameStarted = false; // stays false during the rebuild below
 
-        // Reset the board to the standard starting position for every new
-        // game. Without this, replaying (going back through the mode/color
-        // panels and starting again) would leave pieces exactly where the
-        // previous game ended, instead of a fresh board.
+        // Clear highlights BEFORE rebuilding, so tinted tile materials are
+        // never captured as the "original" tile materials.
+        if (tileObjects != null) DeselectAll();
+
+        // Reset the board to the standard starting position for every new game.
         if (gameSetup != null)
         {
             gameSetup.SetupStandardPosition();
-            BuildStateFromScene();
         }
+        BuildStateFromScene();
 
-        if (tileObjects != null) DeselectAll();
+        // Only now mark the game as started. BuildStateFromScene() checks this
+        // flag to trigger the AI, so setting it earlier would make the AI's
+        // opening move fire twice (once there, once below).
+        gameStarted = true;
+
+        PlayGameStartAudio();
 
         OnTurnChanged?.Invoke(currentTurn);
 
@@ -158,6 +235,7 @@ public partial class ChessGameManager : MonoBehaviour
         if (!gameStarted) return;
         if (gameOver || tileObjects == null) return;
         if (isAnimating) return;
+        if (isAwaitingPromotion) return;
         if (aiEnabled && currentTurn == aiColor) return;
 
         // ---- Mouse ----
@@ -230,7 +308,11 @@ public partial class ChessGameManager : MonoBehaviour
     private Vector2Int? GetRowColFromHit(RaycastHit hit)
     {
         ChessPieceInfo pieceInfo = hit.collider.GetComponentInParent<ChessPieceInfo>();
-        if (pieceInfo != null) return new Vector2Int(pieceInfo.row, pieceInfo.col);
+        if (pieceInfo != null)
+        {
+            if (pieceInfo.row < 0 || pieceInfo.col < 0) return null; // captured piece
+            return new Vector2Int(pieceInfo.row, pieceInfo.col);
+        }
 
         ChessSquareInfo tileInfo = hit.collider.GetComponentInParent<ChessSquareInfo>();
         if (tileInfo != null) return new Vector2Int(tileInfo.row, tileInfo.col);
@@ -278,7 +360,17 @@ public partial class ChessGameManager : MonoBehaviour
         foreach (Vector2Int move in currentLegalMoves)
         {
             bool isCapture = pieceColor[move.x, move.y].HasValue;
-            CreateMoveIndicator(move.x, move.y, isCapture ? captureColor : legalMoveColor);
+
+            if (isCapture)
+            {
+                // A small dot would be hidden under the enemy piece, so color
+                // the whole tile instead — the piece itself is left untouched.
+                HighlightTile(move.x, move.y, captureColor);
+            }
+            else
+            {
+                CreateMoveIndicator(move.x, move.y, legalMoveColor);
+            }
         }
     }
 
@@ -331,6 +423,33 @@ public partial class ChessGameManager : MonoBehaviour
         moveIndicators.Add(indicator);
     }
 
+    private void PlayGameStartAudio()
+    {
+        if (musicSource == null) return;
+
+        if (gameStartSound != null)
+        {
+            musicSource.PlayOneShot(gameStartSound, musicVolume);
+        }
+
+        if (backgroundMusic != null)
+        {
+            musicSource.clip = backgroundMusic;
+            musicSource.loop = true;
+            musicSource.volume = musicVolume;
+            musicSource.Play();
+        }
+    }
+
+    private void PlayMoveSound(bool isCapture)
+    {
+        AudioClip clip = isCapture && captureSound != null ? captureSound : moveSound;
+        if (clip != null && audioSource != null)
+        {
+            audioSource.PlayOneShot(clip, soundVolume);
+        }
+    }
+
     private Material CreateIndicatorMaterial(Color color)
     {
         Shader shader = Shader.Find("Universal Render Pipeline/Lit");
@@ -342,11 +461,15 @@ public partial class ChessGameManager : MonoBehaviour
 
     private void ExecuteMove(int fromRow, int fromCol, int toRow, int toCol, System.Action onComplete = null)
     {
-        if (pieceObjects[toRow, toCol] != null)
+        bool isCapture = pieceObjects[toRow, toCol] != null;
+        PlayMoveSound(isCapture);
+
+        if (isCapture)
         {
             GameObject captured = pieceObjects[toRow, toCol];
             pieceObjects[toRow, toCol] = null;
-            StartCoroutine(AnimateCapture(captured));
+            // The mover's color is the capturing side (state arrays aren't updated yet).
+            SendToCapturedArea(captured, pieceColor[fromRow, fromCol].Value);
         }
 
         GameObject movingGO = pieceObjects[fromRow, fromCol];
@@ -365,7 +488,11 @@ public partial class ChessGameManager : MonoBehaviour
         info.col = toCol;
 
         Vector3 fromPos = movingGO.transform.localPosition;
-        Vector3 toPos = ComputeWorldPos(toRow, toCol);
+        Vector3 promotionPos = ComputeWorldPos(toRow, toCol);
+        // Keep the piece's own resting height (models with a centered pivot sit
+        // higher than the tile top), so it doesn't sink after its first move.
+        Vector3 toPos = promotionPos;
+        toPos.y = fromPos.y;
 
         bool reachedLastRank = (movedColor == ChessPieceColor.White && toRow == boardSize - 1) ||
                                 (movedColor == ChessPieceColor.Black && toRow == 0);
@@ -375,16 +502,42 @@ public partial class ChessGameManager : MonoBehaviour
         {
             if (willPromote)
             {
-                if (pieceObjects[toRow, toCol] != null)
-                    Destroy(pieceObjects[toRow, toCol]);
+                bool humanMover = !(aiEnabled && movedColor == aiColor);
 
-                GameObject queenGO = pieceFactory.CreatePiece(ChessPieceType.Queen, movedColor, toPos, toRow, toCol, board.transform);
-                pieceObjects[toRow, toCol] = queenGO;
-                pieceType[toRow, toCol] = ChessPieceType.Queen;
+                if (humanMover && promotionPanel != null)
+                {
+                    // Let the player choose. The turn only advances after they pick.
+                    isAwaitingPromotion = true;
+                    promotionPanel.Show(chosenType =>
+                    {
+                        isAwaitingPromotion = false;
+                        PromotePawn(toRow, toCol, movedColor, chosenType, promotionPos);
+                        onComplete?.Invoke();
+                    });
+                    return;
+                }
+
+                // The AI (or a scene with no promotion panel) always takes a Queen.
+                PromotePawn(toRow, toCol, movedColor, ChessPieceType.Queen, promotionPos);
             }
 
             onComplete?.Invoke();
         }));
+    }
+
+    // Replaces the pawn on (row, col) with a new piece of the chosen type.
+    private void PromotePawn(int row, int col, ChessPieceColor color, ChessPieceType newType, Vector3 basePos)
+    {
+        GameObject oldPawn = pieceObjects[row, col];
+        if (oldPawn != null)
+        {
+            oldPawn.SetActive(false);
+            Destroy(oldPawn);
+        }
+
+        GameObject promoted = pieceFactory.CreatePiece(newType, color, basePos, row, col, board.transform);
+        pieceObjects[row, col] = promoted;
+        pieceType[row, col] = newType;
     }
 
     private IEnumerator AnimateMove(GameObject go, Vector3 fromPos, Vector3 toPos, float duration, float jumpHeight, System.Action onComplete)
@@ -418,28 +571,125 @@ public partial class ChessGameManager : MonoBehaviour
         onComplete?.Invoke();
     }
 
-    private IEnumerator AnimateCapture(GameObject go)
+    // ------------------------------------------------------------------
+    // Captured pieces are lined up on the table beside the board. Each side's
+    // captures start at that side's own end of the board, on opposite sides of
+    // the board, so both collections stay visible from either camera view.
+    // ------------------------------------------------------------------
+
+    // Local position (in the board's space) where the Nth captured piece of a
+    // side should stand, with its base on the table surface.
+    private Vector3 GetCapturedSlotPosition(ChessPieceColor capturer, int index)
     {
-        float duration = 0.18f;
-        Vector3 startScale = go.transform.localScale;
+        int columns = Mathf.Max(1, capturedColumns);
+        int rowIdx = index / columns;   // moves along the board's length
+        int colIdx = index % columns;   // moves away from the board
+
+        float spacing = capturedSpacing * squareSize;
+        float border = board.addBorder ? board.borderThickness : 0f;
+
+        float sideDistance = halfBoard + border + capturedSideGap * squareSize + colIdx * spacing;
+        float alongBoard = spacing * (rowIdx + 0.5f);
+
+        float whiteSideSign = swapCapturedSides ? -1f : 1f;
+        float x, z;
+        if (capturer == ChessPieceColor.White)
+        {
+            x = whiteSideSign * sideDistance;
+            z = -halfBoard + alongBoard;   // starts at White's end, heads toward Black
+        }
+        else
+        {
+            x = -whiteSideSign * sideDistance;
+            z = halfBoard - alongBoard;    // starts at Black's end, heads toward White
+        }
+
+        return new Vector3(x, FindSurfaceLocalY(x, z), z);
+    }
+
+    // Finds the height of the table under a spot beside the board by casting a
+    // ray straight down. Falls back to the underside of the board if the table
+    // has no collider.
+    private float FindSurfaceLocalY(float localX, float localZ)
+    {
+        Vector3 origin = board.transform.TransformPoint(new Vector3(localX, 20f * squareSize, localZ));
+
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 100f * squareSize,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+        {
+            return board.transform.InverseTransformPoint(hit.point).y + capturedHeightOffset;
+        }
+
+        return -board.tileThickness / 2f + capturedHeightOffset;
+    }
+
+    private void SendToCapturedArea(GameObject captured, ChessPieceColor capturer)
+    {
+        int index = capturer == ChessPieceColor.White ? capturedByWhite++ : capturedByBlack++;
+
+        // Mark as off-board so board scans and taps ignore it.
+        ChessPieceInfo info = captured.GetComponent<ChessPieceInfo>();
+        if (info != null)
+        {
+            info.row = -1;
+            info.col = -1;
+        }
+        foreach (Collider c in captured.GetComponentsInChildren<Collider>())
+        {
+            c.enabled = false;
+        }
+
+        StartCoroutine(AnimateCaptureToSpot(captured, GetCapturedSlotPosition(capturer, index)));
+    }
+
+    private IEnumerator AnimateCaptureToSpot(GameObject go, Vector3 spotBasePos)
+    {
+        if (go == null) yield break;
+
+        Transform t = go.transform;
+        Vector3 startPos = t.localPosition;
+        Vector3 startScale = t.localScale;
+        Vector3 endScale = startScale * capturedPieceScale;
+
+        // How far the model's pivot sits above its base. It shrinks with the
+        // piece, so the base still ends up resting on the table.
+        float pivotHeight = startPos.y - board.tileThickness / 2f;
+        Vector3 endPos = new Vector3(
+            spotBasePos.x,
+            spotBasePos.y + pivotHeight * capturedPieceScale,
+            spotBasePos.z);
+
+        float duration = Mathf.Max(0.01f, capturedAnimDuration);
+        float arc = capturedArcHeight * squareSize;
         float elapsed = 0f;
 
         while (elapsed < duration)
         {
+            if (go == null) yield break;
+
             elapsed += Time.deltaTime;
-            float t = Mathf.Clamp01(elapsed / duration);
-            go.transform.localScale = Vector3.Lerp(startScale, Vector3.zero, t);
+            float p = Mathf.Clamp01(elapsed / duration);
+            float smooth = p * p * (3f - 2f * p);
+
+            Vector3 pos = Vector3.Lerp(startPos, endPos, smooth);
+            pos.y += Mathf.Sin(p * Mathf.PI) * arc;
+            t.localPosition = pos;
+            t.localScale = Vector3.Lerp(startScale, endScale, smooth);
+
             yield return null;
         }
 
-        Destroy(go);
+        if (go != null)
+        {
+            t.localPosition = endPos;
+            t.localScale = endScale;
+        }
     }
 
     private Vector3 ComputeWorldPos(int row, int col)
     {
         float x = col * squareSize - halfBoard + squareSize / 2f;
         float z = row * squareSize - halfBoard + squareSize / 2f;
-        // FIXED: Align with the top of the tiles
         return new Vector3(x, board.tileThickness / 2f, z);
     }
 
@@ -448,8 +698,6 @@ public partial class ChessGameManager : MonoBehaviour
         currentTurn = Opposite(currentTurn);
         OnTurnChanged?.Invoke(currentTurn);
 
-        // Only flip the camera in friend (pass-and-play) mode. In AI mode the
-        // human plays from a fixed seat, so the camera always stays on White's side.
         if (!aiEnabled)
         {
             cameraController?.SetViewForTurn(currentTurn);

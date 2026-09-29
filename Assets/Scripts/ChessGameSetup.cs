@@ -16,24 +16,13 @@ public class ChessGameSetup : MonoBehaviour
         if (board == null) board = GetComponent<ChessBoardGenerator>();
         if (pieceFactory == null) pieceFactory = GetComponent<ChessPieceFactory>();
 
-        // Fail loudly instead of throwing a silent NullReferenceException that
-        // only kills this method — this way it's obvious in the Console
-        // exactly what's missing, instead of just "no pieces spawned".
         if (board == null)
         {
-            Debug.LogError("ChessGameSetup: 'board' is not assigned and no " +
-                "ChessBoardGenerator was found on this GameObject. Assign it " +
-                "in the Inspector, or make sure this script sits on the same " +
-                "GameObject as ChessBoardGenerator.", this);
             return;
         }
 
         if (pieceFactory == null)
         {
-            Debug.LogError("ChessGameSetup: 'pieceFactory' is not assigned and " +
-                "no ChessPieceFactory was found on this GameObject. Assign it " +
-                "in the Inspector, or make sure this script sits on the same " +
-                "GameObject as ChessPieceFactory.", this);
             return;
         }
 
@@ -45,8 +34,6 @@ public class ChessGameSetup : MonoBehaviour
     {
         if (board == null || pieceFactory == null)
         {
-            Debug.LogError("ChessGameSetup: cannot set up pieces, 'board' or " +
-                "'pieceFactory' is missing. Check the Inspector references.", this);
             return;
         }
 
@@ -69,27 +56,29 @@ public class ChessGameSetup : MonoBehaviour
         }
     }
 
-    // Prevents duplicate pieces piling up if SetupStandardPosition() is ever
-    // called more than once (e.g. via the context menu, or if you later wire
-    // up a "restart game" button that re-runs this).
     private void ClearExistingPieces()
     {
-        ChessPieceInfo[] existingPieces = GetComponentsInChildren<ChessPieceInfo>();
-        foreach (var p in existingPieces)
-        {
-            if (Application.isPlaying) Destroy(p.gameObject);
-            else DestroyImmediate(p.gameObject);
-        }
+        var toRemove = new System.Collections.Generic.HashSet<ChessPieceInfo>(
+            GetComponentsInChildren<ChessPieceInfo>(true));
 
-        // Also catch pieces parented directly under the board, in case this
-        // script's own GameObject isn't the board's parent.
         if (board != null)
         {
-            ChessPieceInfo[] boardPieces = board.GetComponentsInChildren<ChessPieceInfo>();
-            foreach (var p in boardPieces)
+            foreach (var p in board.GetComponentsInChildren<ChessPieceInfo>(true))
+                toRemove.Add(p);
+        }
+
+        foreach (var p in toRemove)
+        {
+            if (p == null) continue;
+
+            if (Application.isPlaying)
             {
-                if (Application.isPlaying) Destroy(p.gameObject);
-                else DestroyImmediate(p.gameObject);
+                p.transform.SetParent(null);
+                Destroy(p.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(p.gameObject);
             }
         }
     }
@@ -99,9 +88,6 @@ public class ChessGameSetup : MonoBehaviour
         float x = col * squareSize - halfBoard + squareSize / 2f;
         float z = row * squareSize - halfBoard + squareSize / 2f;
 
-        // Consistent with ChessGameManager.ComputeWorldPos() — places the
-        // piece's base exactly on top of the tile, using the board's own
-        // tileThickness rather than a hardcoded magic number.
         float y = board.tileThickness / 2f;
 
         Vector3 pos = new Vector3(x, y, z);

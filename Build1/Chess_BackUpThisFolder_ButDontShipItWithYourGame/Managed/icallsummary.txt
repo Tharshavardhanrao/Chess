@@ -434,6 +434,7 @@ UnityEngine.CanvasRenderer::set_materialCount_Injected
 UnityEngine.CanvasRenderer::set_popMaterialCount_Injected
 UnityEngine.Collider::get_enabled_Injected
 UnityEngine.Collider::ClosestPoint_Injected
+UnityEngine.Collider::set_enabled_Injected
 UnityEngine.Collider::set_isTrigger_Injected
 UnityEngine.ColorGamutUtility::GetColorPrimaries
 UnityEngine.ColorGamutUtility::GetTransferFunction
@@ -987,7 +988,6 @@ UnityEngine.Object::set_hideFlags_Injected
 UnityEngine.Object::get_hideFlags_Injected
 UnityEngine.Object::FindObjectFromInstanceIDThreadSafe_Injected
 UnityEngine.Object::FindObjectsByType
-UnityEngine.Object::FindObjectsOfType
 UnityEngine.ObjectDispatcher::CreateDispatchSystemHandle
 UnityEngine.ObjectDispatcher::DestroyDispatchSystemHandle
 UnityEngine.ObjectDispatcher::DispatchTransformDataChangesAndClear
@@ -1087,6 +1087,7 @@ UnityEngine.Renderer::get_sortingOrder_Injected
 UnityEngine.Renderer::GetMaterial_Injected
 UnityEngine.Renderer::GetSharedMaterial_Injected
 UnityEngine.Renderer::SetMaterial_Injected
+UnityEngine.Renderer::get_bounds_Injected
 UnityEngine.Renderer::set_allowGPUDrivenRendering_Injected
 UnityEngine.Renderer::set_enabled_Injected
 UnityEngine.Renderer::set_localBounds_Injected
@@ -1697,6 +1698,7 @@ UnityEngine.Transform::GetChild_Injected
 UnityEngine.Transform::GetParent_Injected
 UnityEngine.Transform::Internal_LookAt_Injected
 UnityEngine.Transform::InverseTransformPoint_Injected
+UnityEngine.Transform::InverseTransformVector_Injected
 UnityEngine.Transform::SetAsFirstSibling_Injected
 UnityEngine.Transform::SetLocalPositionAndRotation_Injected
 UnityEngine.Transform::SetParent_Injected

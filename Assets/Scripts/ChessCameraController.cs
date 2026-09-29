@@ -13,7 +13,6 @@ public class ChessCameraController : MonoBehaviour
     public float touchZoomSpeed = 0.015f;
 
     public float yaw = 0f;
-
     public float pitch = 50f;
     public float minPitch = 15f;
     public float maxPitch = 85f;
@@ -24,13 +23,9 @@ public class ChessCameraController : MonoBehaviour
 
     public bool autoFlipPerTurn = true;
     public bool captureInitialTransformAsWhiteView = true;
-
     public float whiteViewYaw = 180f;
-
     public float blackViewYaw = 0f;
-
     public float flipDuration = 0.7f;
-
     public bool blockInputDuringFlip = true;
 
     private Camera cam;
@@ -54,8 +49,8 @@ public class ChessCameraController : MonoBehaviour
         if (cam == null) cam = Camera.main;
         if (target == null)
         {
-            ChessBoardGenerator board = FindObjectOfType<ChessBoardGenerator>();
-            if (board != null) target = board.transform;
+            Debug.LogWarning("ChessCameraController: 'target' is not assigned. " +
+                "Drag the board GameObject into the Target field in the Inspector.", this);
         }
 
         if (target != null)
@@ -112,8 +107,17 @@ public class ChessCameraController : MonoBehaviour
 
     public void SnapViewForTurn(ChessPieceColor color)
     {
-        if (!autoFlipPerTurn) return;
+        if (flipCoroutine != null)
+        {
+            StopCoroutine(flipCoroutine);
+            flipCoroutine = null;
+        }
+        isFlipping = false;
+
         yaw = color == ChessPieceColor.White ? whiteViewYaw : blackViewYaw;
+
+        velocity = Vector3.zero;
+        ApplyImmediate();
     }
 
     private IEnumerator SmoothFlip(float targetYaw, float duration)
