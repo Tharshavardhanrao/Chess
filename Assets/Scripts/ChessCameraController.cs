@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 public class ChessCameraController : MonoBehaviour
 {
@@ -20,6 +21,12 @@ public class ChessCameraController : MonoBehaviour
     public float touchRotateSpeed = 0.25f;
 
     public float positionSmoothTime = 0.08f;
+
+    public Button lockButton;
+    public GameObject lockedIcon;
+    public bool startLocked = false;
+
+    private bool isLocked = false;
 
     public bool autoFlipPerTurn = true;
     public bool captureInitialTransformAsWhiteView = true;
@@ -45,12 +52,13 @@ public class ChessCameraController : MonoBehaviour
 
     void Start()
     {
+        if (lockButton != null) lockButton.onClick.AddListener(ToggleLock);
+        SetLocked(startLocked);
+
         cam = GetComponent<Camera>();
         if (cam == null) cam = Camera.main;
         if (target == null)
         {
-            Debug.LogWarning("ChessCameraController: 'target' is not assigned. " +
-                "Drag the board GameObject into the Target field in the Inspector.", this);
         }
 
         if (target != null)
@@ -83,7 +91,7 @@ public class ChessCameraController : MonoBehaviour
     {
         if (target == null || cam == null) return;
 
-        bool inputAllowed = !(isFlipping && blockInputDuringFlip);
+        bool inputAllowed = !isLocked && !(isFlipping && blockInputDuringFlip);
         if (inputAllowed)
         {
             HandleMouse();
@@ -94,6 +102,27 @@ public class ChessCameraController : MonoBehaviour
         transform.position = Vector3.SmoothDamp(transform.position, desiredPos, ref velocity, positionSmoothTime);
         transform.LookAt(target.position);
     }
+
+    public void ToggleLock()
+    {
+        SetLocked(!isLocked);
+    }
+
+    public void SetLocked(bool locked)
+    {
+        isLocked = locked;
+
+        if (isLocked)
+        {
+            mouseDragging = false;
+            touchDragging = false;
+            pinching = false;
+        }
+
+        if (lockedIcon != null) lockedIcon.SetActive(isLocked);
+    }
+
+    public bool IsLocked => isLocked;
 
     public void SetViewForTurn(ChessPieceColor color)
     {
