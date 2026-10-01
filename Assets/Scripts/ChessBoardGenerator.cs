@@ -124,7 +124,7 @@ public class ChessBoardGenerator : MonoBehaviour
                 Destroy(existing.gameObject);
             else
                 DestroyImmediate(existing.gameObject);
-        }
+        }   
     }
 }
 

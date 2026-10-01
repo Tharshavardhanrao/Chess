@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.EventSystems;
 
 public class ChessCameraController : MonoBehaviour
@@ -28,6 +29,12 @@ public class ChessCameraController : MonoBehaviour
     public float flipDuration = 0.7f;
     public bool blockInputDuringFlip = true;
 
+    [Header("View Lock")]
+    [Tooltip("When true, the camera is frozen: no rotate, no zoom, no auto flip.")]
+    [SerializeField] private bool isLocked = false;
+    [Tooltip("Fires whenever the lock state changes (true = locked).")]
+    public UnityEvent<bool> OnLockChanged;
+
     private Camera cam;
     private Vector3 velocity;
 
@@ -42,6 +49,13 @@ public class ChessCameraController : MonoBehaviour
 
     private Coroutine flipCoroutine;
     private bool isFlipping = false;
+
+    // Remembers a per-turn flip that was requested while locked,
+    // so it can be applied when the player unlocks.
+    private bool pendingFlip = false;
+    private ChessPieceColor lastTurnColor = ChessPieceColor.White;
+
+    public bool IsLocked => isLocked;
 
     void Start()
     {
@@ -77,13 +91,14 @@ public class ChessCameraController : MonoBehaviour
         }
 
         ApplyImmediate();
+        OnLockChanged?.Invoke(isLocked);
     }
 
     void LateUpdate()
     {
         if (target == null || cam == null) return;
 
-        bool inputAllowed = !(isFlipping && blockInputDuringFlip);
+        bool inputAllowed = !isLocked && !(isFlipping && blockInputDuringFlip);
         if (inputAllowed)
         {
             HandleMouse();
@@ -95,9 +110,60 @@ public class ChessCameraController : MonoBehaviour
         transform.LookAt(target.position);
     }
 
+    // ------------------------------------------------------------------
+    // Lock API
+    // ------------------------------------------------------------------
+
+    // Hook this straight to a UI Button if you prefer wiring it in the Inspector.
+    public void ToggleLock()
+    {
+        SetLocked(!isLocked);
+    }
+
+    public void SetLocked(bool locked)
+    {
+        if (isLocked == locked) return;
+        isLocked = locked;
+
+        if (isLocked)
+        {
+            // Freeze the view exactly where it is right now.
+            if (flipCoroutine != null)
+            {
+                StopCoroutine(flipCoroutine);
+                flipCoroutine = null;
+            }
+            isFlipping = false;
+
+            mouseDragging = false;
+            touchDragging = false;
+            pinching = false;
+        }
+        else if (pendingFlip)
+        {
+            // A turn changed while locked (Friend mode) - catch up now.
+            pendingFlip = false;
+            SetViewForTurn(lastTurnColor);
+        }
+
+        OnLockChanged?.Invoke(isLocked);
+    }
+
+    // ------------------------------------------------------------------
+    // Turn-based views
+    // ------------------------------------------------------------------
+
     public void SetViewForTurn(ChessPieceColor color)
     {
+        lastTurnColor = color;
+
         if (!autoFlipPerTurn) return;
+
+        if (isLocked)
+        {
+            pendingFlip = true;
+            return;
+        }
 
         float targetYaw = color == ChessPieceColor.White ? whiteViewYaw : blackViewYaw;
 
@@ -105,8 +171,13 @@ public class ChessCameraController : MonoBehaviour
         flipCoroutine = StartCoroutine(SmoothFlip(targetYaw, flipDuration));
     }
 
+    // Snapping always works, even while locked. It is only used when a new
+    // game starts, which needs the correct starting orientation.
     public void SnapViewForTurn(ChessPieceColor color)
     {
+        lastTurnColor = color;
+        pendingFlip = false;
+
         if (flipCoroutine != null)
         {
             StopCoroutine(flipCoroutine);

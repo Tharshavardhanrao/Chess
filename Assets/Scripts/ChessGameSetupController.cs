@@ -2,23 +2,6 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
-// Handles the menu flow in code. No Button OnClick() entries are needed in
-// the Inspector, and no panel needs to be enabled/disabled by hand.
-//
-//   Mode Panel       : [vs Friend] [vs AI]
-//   Color Panel      : [Play White] [Play Black]        (both modes)
-//   Difficulty Panel : [Easy] [Medium] [Hard]            (AI mode only)
-//
-//   Mode -> Friend -> Color -> game
-//   Mode -> AI     -> Color -> Difficulty -> game
-//
-// There is no Start panel and no separate loading script — this component
-// plays the loading animation itself (if loadingPanel is assigned), then
-// opens the Mode panel directly once it finishes.
-//
-// INSPECTOR SETUP: drag the panels, buttons and ChessGameManager into the
-// fields below. Panels can be in any active/inactive state in the scene;
-// this script sets the correct state as soon as Play starts.
 public class ChessGameSetupController : MonoBehaviour
 {
     private enum MenuStep { Mode, Color, Difficulty, Playing }
@@ -27,7 +10,7 @@ public class ChessGameSetupController : MonoBehaviour
     [Tooltip("Leave empty to skip straight to the Mode panel with no loading screen.")]
     public GameObject loadingPanel;
     public Slider loadingSlider;
-    public Text loadingText; // optional — leave empty if you don't have one
+    public Text loadingText;
     [Tooltip("How long the loading slider takes to fill, in seconds.")]
     public float loadingDuration = 2.5f;
     [Tooltip("Shapes how the fill speeds up/slows down.")]
@@ -61,8 +44,8 @@ public class ChessGameSetupController : MonoBehaviour
     public Button hardButton;
 
     [Header("Optional Back Buttons (leave empty if you don't have them)")]
-    public Button colorBackButton;      // Color -> Mode
-    public Button difficultyBackButton; // Difficulty -> Color
+    public Button colorBackButton;
+    public Button difficultyBackButton;
 
     [Header("AI Difficulty (search depth)")]
     [Tooltip("Higher depth = stronger but slower AI.")]
@@ -133,14 +116,11 @@ public class ChessGameSetupController : MonoBehaviour
         if (loadingText != null) loadingText.text = Mathf.RoundToInt(t * 100f) + "%";
     }
 
-    // Adds a click listener only if the button is assigned, so optional
-    // buttons (like Back / Quit) can simply be left empty.
     private void Bind(Button button, UnityEngine.Events.UnityAction action)
     {
         if (button != null) button.onClick.AddListener(action);
     }
 
-    // Shows exactly one panel and hides the rest.
     private void ShowStep(MenuStep step)
     {
         SetActive(modePanel, step == MenuStep.Mode);
@@ -159,13 +139,11 @@ public class ChessGameSetupController : MonoBehaviour
 
         if (selectedVsAI)
         {
-            // AI mode needs a difficulty pick next.
             ShowStep(MenuStep.Difficulty);
         }
         else
         {
-            // Friend mode: nothing left to pick, start right away.
-            StartTheGame(2); // depth is irrelevant in friend mode
+            StartTheGame(2);
         }
     }
 
@@ -178,16 +156,14 @@ public class ChessGameSetupController : MonoBehaviour
     {
         if (gameManager == null)
         {
-            Debug.LogError("ChessGameSetupController: Game Manager is not assigned.", this);
             return;
         }
 
-        ShowStep(MenuStep.Playing); // hides every panel
-        SetActive(loadingPanel, false); // in case a game is restarted while it's still around
+        ShowStep(MenuStep.Playing); 
+        SetActive(loadingPanel, false); 
 
         if (selectedVsAI)
         {
-            // The AI plays whichever color the human did not pick.
             ChessPieceColor aiSide = selectedColor == ChessPieceColor.White
                 ? ChessPieceColor.Black
                 : ChessPieceColor.White;
@@ -196,7 +172,6 @@ public class ChessGameSetupController : MonoBehaviour
         }
         else
         {
-            // Friend mode: White always moves first, and the camera flips every turn.
             gameManager.StartGame(false, depth);
         }
 
@@ -212,8 +187,6 @@ public class ChessGameSetupController : MonoBehaviour
 #endif
     }
 
-    // Called by the loading screen once it finishes — opens the Mode panel,
-    // since there's no separate Start panel anymore.
     public void ShowMainMenu()
     {
         ShowStep(MenuStep.Mode);

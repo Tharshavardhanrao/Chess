@@ -7,9 +7,9 @@ public class ChessMenuUI : MonoBehaviour
     public ChessGameManager gameManager;
 
     [Header("Panels")]
-    public GameObject mainMenuPanel;      // Start / Quit
-    public GameObject modeSelectPanel;    // Play with Friend / Play with AI
-    public GameObject difficultyPanel;    // Easy / Medium / Hard
+    public GameObject mainMenuPanel; 
+    public GameObject modeSelectPanel;
+    public GameObject difficultyPanel;
 
     [Header("Main Menu Buttons")]
     public Button startButton;
