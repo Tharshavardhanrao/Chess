@@ -47,6 +47,7 @@ public partial class ChessGameManager : MonoBehaviour
     public float moveJumpHeight = 0.5f;
     private bool isAnimating = false;
     private bool isAwaitingPromotion = false;
+    private bool isPaused = false;
 
     [Header("Captured Pieces")]
     [Tooltip("Size of a captured piece relative to its size on the board.")]
@@ -114,6 +115,13 @@ public partial class ChessGameManager : MonoBehaviour
         string winner = Opposite(resigningColor) == ChessPieceColor.White ? "White" : "Black";
         string message = $"{winner} wins — opponent resigned.";
         OnGameOver?.Invoke(message);
+    }
+
+    // Blocks board taps (piece selection/movement) while true. Doesn't touch
+    // AI thinking or in-progress animations — it only gates player input.
+    public void SetPaused(bool paused)
+    {
+        isPaused = paused;
     }
 
     void Start()
@@ -236,6 +244,7 @@ public partial class ChessGameManager : MonoBehaviour
         if (gameOver || tileObjects == null) return;
         if (isAnimating) return;
         if (isAwaitingPromotion) return;
+        if (isPaused) return;
         if (aiEnabled && currentTurn == aiColor) return;
 
         // ---- Mouse ----
@@ -690,6 +699,7 @@ public partial class ChessGameManager : MonoBehaviour
     {
         float x = col * squareSize - halfBoard + squareSize / 2f;
         float z = row * squareSize - halfBoard + squareSize / 2f;
+        // FIXED: Align with the top of the tiles
         return new Vector3(x, board.tileThickness / 2f, z);
     }
 
@@ -698,6 +708,8 @@ public partial class ChessGameManager : MonoBehaviour
         currentTurn = Opposite(currentTurn);
         OnTurnChanged?.Invoke(currentTurn);
 
+        // Only flip the camera in friend (pass-and-play) mode. In AI mode the
+        // human plays from a fixed seat, so the camera always stays on White's side.
         if (!aiEnabled)
         {
             cameraController?.SetViewForTurn(currentTurn);

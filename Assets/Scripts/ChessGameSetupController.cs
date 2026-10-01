@@ -47,6 +47,19 @@ public class ChessGameSetupController : MonoBehaviour
     public Button colorBackButton;
     public Button difficultyBackButton;
 
+    [Header("Pause Menu")]
+    [Tooltip("The gear/settings button that opens the Pause panel during play.")]
+    public Button settingsButton;
+    public GameObject pausePanel;
+    public Button resumeButton;
+    public Button restartButton;   // opens the Yes/No confirm panel below
+    public Button pauseMainMenuButton; // leaves immediately, no confirmation
+
+    [Header("Pause Menu — Restart Confirmation")]
+    public GameObject confirmPanel;
+    public Button confirmYesButton;
+    public Button confirmNoButton;
+
     [Header("AI Difficulty (search depth)")]
     [Tooltip("Higher depth = stronger but slower AI.")]
     [Range(1, 4)] public int easyDepth = 1;
@@ -71,6 +84,16 @@ public class ChessGameSetupController : MonoBehaviour
 
         Bind(colorBackButton, () => ShowStep(MenuStep.Mode));
         Bind(difficultyBackButton, () => ShowStep(MenuStep.Color));
+
+        Bind(settingsButton, OpenPauseMenu);
+        Bind(resumeButton, ResumeGame);
+        Bind(restartButton, OpenRestartConfirm);
+        Bind(pauseMainMenuButton, LeaveToMainMenu);
+        Bind(confirmYesButton, LeaveToMainMenu);
+        Bind(confirmNoButton, CancelRestartConfirm);
+
+        SetActive(pausePanel, false);
+        SetActive(confirmPanel, false);
 
         if (loadingPanel != null)
         {
@@ -187,6 +210,52 @@ public class ChessGameSetupController : MonoBehaviour
 #endif
     }
 
+<<<<<<< HEAD
+=======
+    // ------------------------------------------------------------------
+    // Pause Menu — Settings button opens it; Restart asks Yes/No first.
+    // ------------------------------------------------------------------
+    private void OpenPauseMenu()
+    {
+        SetActive(pausePanel, true);
+        SetActive(confirmPanel, false);
+        if (gameManager != null) gameManager.SetPaused(true);
+    }
+
+    private void ResumeGame()
+    {
+        SetActive(pausePanel, false);
+        SetActive(confirmPanel, false);
+        if (gameManager != null) gameManager.SetPaused(false);
+    }
+
+    private void OpenRestartConfirm()
+    {
+        SetActive(confirmPanel, true);
+    }
+
+    private void CancelRestartConfirm()
+    {
+        // "No" just closes the confirm popup — still paused, pause panel still open.
+        SetActive(confirmPanel, false);
+    }
+
+    // Used by both "Yes" on the restart confirm, and the direct Main Menu
+    // button — leaves to the Mode panel. Picking a mode/color again starts a
+    // brand new game (ChessGameManager.StartGame() resets the board).
+    private void LeaveToMainMenu()
+    {
+        SetActive(pausePanel, false);
+        SetActive(confirmPanel, false);
+
+        if (gameManager != null) gameManager.SetPaused(false);
+        if (hudController != null) hudController.HideHUD();
+        ShowMainMenu();
+    }
+
+    // Called by the loading screen once it finishes — opens the Mode panel,
+    // since there's no separate Start panel anymore.
+>>>>>>> 58a81d3a06561d486a17cee13ffc25e37beeeece
     public void ShowMainMenu()
     {
         ShowStep(MenuStep.Mode);
