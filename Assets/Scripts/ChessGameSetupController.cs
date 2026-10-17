@@ -182,8 +182,8 @@ public class ChessGameSetupController : MonoBehaviour
             return;
         }
 
-        ShowStep(MenuStep.Playing); 
-        SetActive(loadingPanel, false); 
+        ShowStep(MenuStep.Playing);
+        SetActive(loadingPanel, false);
 
         if (selectedVsAI)
         {
@@ -210,8 +210,6 @@ public class ChessGameSetupController : MonoBehaviour
 #endif
     }
 
-<<<<<<< HEAD
-=======
     // ------------------------------------------------------------------
     // Pause Menu — Settings button opens it; Restart asks Yes/No first.
     // ------------------------------------------------------------------
@@ -255,7 +253,6 @@ public class ChessGameSetupController : MonoBehaviour
 
     // Called by the loading screen once it finishes — opens the Mode panel,
     // since there's no separate Start panel anymore.
->>>>>>> 58a81d3a06561d486a17cee13ffc25e37beeeece
     public void ShowMainMenu()
     {
         ShowStep(MenuStep.Mode);

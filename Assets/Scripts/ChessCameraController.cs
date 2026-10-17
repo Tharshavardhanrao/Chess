@@ -27,8 +27,6 @@ public class ChessCameraController : MonoBehaviour
     public GameObject lockedIcon;
     public bool startLocked = false;
 
-    private bool isLocked = false;
-
     public bool autoFlipPerTurn = true;
     public bool captureInitialTransformAsWhiteView = true;
     public float whiteViewYaw = 180f;
@@ -66,14 +64,15 @@ public class ChessCameraController : MonoBehaviour
 
     void Start()
     {
-        if (lockButton != null) lockButton.onClick.AddListener(ToggleLock);
-        SetLocked(startLocked);
-
         cam = GetComponent<Camera>();
         if (cam == null) cam = Camera.main;
-        if (target == null)
-        {
-        }
+
+        if (lockButton != null) lockButton.onClick.AddListener(ToggleLock);
+
+        // Set the initial state directly so the icon always matches,
+        // even when startLocked equals the current value.
+        isLocked = startLocked;
+        if (lockedIcon != null) lockedIcon.SetActive(isLocked);
 
         if (target != null)
         {
@@ -118,14 +117,6 @@ public class ChessCameraController : MonoBehaviour
         transform.LookAt(target.position);
     }
 
-<<<<<<< HEAD
-    // ------------------------------------------------------------------
-    // Lock API
-    // ------------------------------------------------------------------
-
-    // Hook this straight to a UI Button if you prefer wiring it in the Inspector.
-=======
->>>>>>> 58a81d3a06561d486a17cee13ffc25e37beeeece
     public void ToggleLock()
     {
         SetLocked(!isLocked);
@@ -133,15 +124,11 @@ public class ChessCameraController : MonoBehaviour
 
     public void SetLocked(bool locked)
     {
-<<<<<<< HEAD
         if (isLocked == locked) return;
-=======
->>>>>>> 58a81d3a06561d486a17cee13ffc25e37beeeece
         isLocked = locked;
 
         if (isLocked)
         {
-<<<<<<< HEAD
             // Freeze the view exactly where it is right now.
             if (flipCoroutine != null)
             {
@@ -150,13 +137,10 @@ public class ChessCameraController : MonoBehaviour
             }
             isFlipping = false;
 
-=======
->>>>>>> 58a81d3a06561d486a17cee13ffc25e37beeeece
             mouseDragging = false;
             touchDragging = false;
             pinching = false;
         }
-<<<<<<< HEAD
         else if (pendingFlip)
         {
             // A turn changed while locked (Friend mode) - catch up now.
@@ -164,19 +148,10 @@ public class ChessCameraController : MonoBehaviour
             SetViewForTurn(lastTurnColor);
         }
 
+        if (lockedIcon != null) lockedIcon.SetActive(isLocked);
+
         OnLockChanged?.Invoke(isLocked);
     }
-
-    // ------------------------------------------------------------------
-    // Turn-based views
-    // ------------------------------------------------------------------
-=======
-
-        if (lockedIcon != null) lockedIcon.SetActive(isLocked);
-    }
-
-    public bool IsLocked => isLocked;
->>>>>>> 58a81d3a06561d486a17cee13ffc25e37beeeece
 
     public void SetViewForTurn(ChessPieceColor color)
     {
